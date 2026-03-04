@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Random Wiki</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+<style>
+:root{
+  --bg:#eaf3ef;
+  --card:#ffffff;
+  --accent:#0f766e;
+  --accent-soft:#14b8a6;
+  --text:#0f172a;
+  --muted:#475569;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background:linear-gradient(135deg,#dbeafe,#eaf3ef);
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  color:var(--text);
+}
+
+.container{
+  width:100%;
+  max-width:1000px;
+  padding:30px 20px 60px;
+}
+
+header{
+  text-align:center;
+  margin-bottom:30px;
+}
+
+header h1{
+  margin:0;
+  font-size:clamp(2rem,4vw,2.8rem);
+  font-weight:800;
+  color:var(--accent);
+}
+
+.controls{
+  text-align:center;
+  margin-bottom:25px;
+}
+
+.controls input{
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #cbd5e1;
+  width:80px;
+  text-align:center;
+  font-size:1rem;
+  margin-right:10px;
+}
+
+button{
+  padding:12px 22px;
+  font-size:1rem;
+  font-weight:700;
+  border:none;
+  border-radius:14px;
+  cursor:pointer;
+  background:var(--accent);
+  color:white;
+  transition:.25s;
+}
+
+button:hover{
+  background:var(--accent-soft);
+}
+
+#result{
+  display:grid;
+  gap:20px;
+}
+
+.card{
+  background:var(--card);
+  border-radius:18px;
+  padding:22px;
+  box-shadow:0 10px 30px rgba(0,0,0,.08);
+  transition:.2s;
+}
+
+.card:hover{
+  transform:translateY(-4px);
+}
+
+.card h2{
+  margin:0 0 8px;
+  font-size:1.1rem;
+}
+
+.meta{
+  font-size:.85rem;
+  color:var(--muted);
+}
+
+.number{
+  font-weight:800;
+  color:var(--accent);
+  margin-bottom:6px;
+}
+
+a{
+  color:var(--accent);
+  font-weight:600;
+  text-decoration:none;
+}
+
+a:hover{
+  text-decoration:underline;
+}
+
+@media(max-width:600px){
+  .card{padding:16px}
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+  <h1>Random Wiki</h1>
+</header>
+
+<div class="controls">
+  <input type="number" id="count" value="10" min="1" max="50">
+  <button onclick="generate()">Generate</button>
+</div>
+
+<div id="result"></div>
+
+</div>
+
+<script>
+
+/* ======================================
+   GLOBAL SITE LIST
+====================================== */
+
+let WIKIPEDIA_SITES = [];
+
+async function fetchJSON(url){
+  const r = await fetch(url);
+  return r.json();
+}
+
+/* ======================================
+   LOAD WIKIMEDIA LANGUAGES
+====================================== */
+
+async function loadWikimediaSites(){
+  const data = await fetchJSON(
+    "https://meta.wikimedia.org/w/api.php?action=sitematrix&format=json&origin=*"
+  );
+
+  const matrix = data.sitematrix;
+
+  for(const key in matrix){
+    if(key === "count") continue;
+
+    const block = matrix[key];
+    if(!block.site || !block.code) continue;
+
+    const lang = block.code;
+
+    block.site.forEach(site=>{
+      if(site.closed || site.private) return;
+      if(site.code === "wiki"){
+        WIKIPEDIA_SITES.push(lang);
+      }
+    });
+  }
+}
+
+/* ======================================
+   RANDOM WIKIPEDIA ARTICLE
+====================================== */
+
+async function randomFromWikipedia(){
+
+  const lang = WIKIPEDIA_SITES[
+    Math.floor(Math.random() * WIKIPEDIA_SITES.length)
+  ];
+
+  const api = `https://${lang}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`;
+
+  const data = await fetchJSON(api);
+
+  const title = data.query.random[0].title;
+
+  return {
+    title,
+    url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+    source: `Wikipedia (${lang})`
+  };
+}
+
+/* ======================================
+   RANDOM FANDOM ARTICLE
+====================================== */
+
+const FANDOM_FILE_COUNT = 3234;
+
+function randomFromFandom(){
+
+  return new Promise((resolve, reject)=>{
+
+    const fileIndex = Math.floor(Math.random() * FANDOM_FILE_COUNT) + 1;
+    const fileUrl = `https://cdn.jsdelivr.net/gh/swrdfgd/RandomWords2/fandom/fandom_${fileIndex}.txt`;
+
+    $.get(fileUrl)
+      .done(txt=>{
+
+        const lines = txt.split("\n").map(l=>l.trim()).filter(Boolean);
+        if(!lines.length) return reject();
+
+        const line = lines[Math.floor(Math.random()*lines.length)];
+        const lastComma = line.lastIndexOf(",");
+        if(lastComma === -1) return reject();
+
+        let wikiUrl = line.slice(lastComma+1).trim();
+        wikiUrl = wikiUrl.replace(/\/+$/,"").replace("http://","https://");
+
+        const api = `${wikiUrl}/api.php?origin=*&action=query&format=json&list=random&rnlimit=1&rnnamespace=0`;
+
+        $.getJSON(api)
+          .done(data=>{
+            const title = data?.query?.random?.[0]?.title;
+            if(!title) return reject();
+
+            resolve({
+              title,
+              url: `${wikiUrl}/wiki/${encodeURIComponent(title)}`,
+              source: `Fandom (${wikiUrl.replace(/^https?:\/\//,"")})`
+            });
+          })
+          .fail(()=>reject());
+      })
+      .fail(()=>reject());
+  });
+}
+
+/* ======================================
+   SELECTION ALGORITHM
+====================================== */
+
+async function generateArticle(){
+
+  if(Math.random() < 0.6){
+    try{ return await randomFromWikipedia(); }
+    catch(e){ console.warn("Wikipedia failed"); }
+  }
+
+  if(Math.random() < 0.7){
+    try{ return await randomFromFandom(); }
+    catch(e){ console.warn("Fandom failed"); }
+  }
+
+  return await randomFromWikipedia();
+}
+
+/* ======================================
+   MAIN GENERATOR
+====================================== */
+let currentGeneration = 0;
+
+async function generate(){
+
+  const myGeneration = ++currentGeneration; // token baru
+
+  const box = document.getElementById("result");
+  box.innerHTML = "";
+
+  let count = parseInt(document.getElementById("count").value);
+  if(isNaN(count) || count < 1) count = 10;
+  if(count > 50) count = 50;
+
+  for(let i=0;i<count;i++){
+
+    // Jika sudah diganti generation → stop total
+    if(myGeneration !== currentGeneration) return;
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<div class="number">${i+1}.</div><p>Loading...</p>`;
+    box.appendChild(card);
+
+    try{
+      const article = await generateArticle();
+
+      // Jika selama menunggu user klik lagi → batalkan update
+      if(myGeneration !== currentGeneration) return;
+
+      card.innerHTML = `
+        <div class="number">${i+1}.</div>
+        <h2>${article.title}</h2>
+        <div class="meta">${article.source}</div>
+        <p style="margin-top:14px;">
+          <a href="${article.url}" target="_blank">Open Article →</a>
+        </p>
+      `;
+
+    }
+    catch(e){
+      if(myGeneration !== currentGeneration) return;
+
+      card.innerHTML = `
+        <div class="number">${i+1}.</div>
+        <p>Failed to fetch article.</p>
+      `;
+    }
+  }
+}
+
+/* ======================================
+   INIT
+====================================== */
+
+(async()=>{
+  await loadWikimediaSites();
+  generate(); // default 10
+})();
+</script>
+
+</body>
+</html>
