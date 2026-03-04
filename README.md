@@ -1,0 +1,2 @@
+# RandomWiki
+Random Wikis Articles
